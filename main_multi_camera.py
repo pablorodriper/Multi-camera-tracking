@@ -72,7 +72,7 @@ if __name__ == '__main__':
             homography_cameras[cam_num] = read_homography_matrix(homography_path_start + camera[-5:] + homography_path)
 
             print("\nComputing tracking by overlap")
-            if load_pkl and os.path.exists('detections' + str(sequence) + str(cam_num)+'.pkl') and os.path.exists('tracks' + str(sequence) + str(cam_num)+'.pkl'):
+            if load_pkl and os.path.exists('output/pickle/detections' + str(sequence) + str(cam_num)+'.pkl') and os.path.exists('output/pickle/tracks' + str(sequence) + str(cam_num)+'.pkl'):
                 with open('output/pickle/detections' + str(sequence) + str(cam_num)+'.pkl', 'rb') as p:
                     print("Reading tracked detections from pkl")
                     tracked_detections[cam_num] = pickle.load(p)
@@ -86,8 +86,8 @@ if __name__ == '__main__':
 
                 with open('output/pickle/embeddings' + str(sequence) + str(cam_num)+'.pkl', 'rb') as p:
                     print("Reading tracks from pkl")
-                    #embeddings[cam_num] = pickle.load(p)
-                    print("Tracks loaded\n")
+                    embeddings[cam_num] = pickle.load(p)
+                    print("Embeddings loaded\n")
 
             else:
 
