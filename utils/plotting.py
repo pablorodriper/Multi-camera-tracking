@@ -155,6 +155,7 @@ def visualize_tracks_opencv(image, frame_tracks, colors, display=False, export_f
         bbox = frame_tracks[id]
         minc, minr, maxc, maxr = bbox['bbox']
         cv2.rectangle(image, (minc, minr), (maxc, maxr), colors[id]*255, 20)
+        cv2.putText(image, str(id), (minc, minr), cv2.FONT_HERSHEY_SIMPLEX, 4, colors[id] * 255, 10, cv2.LINE_AA)
 
     # for id in frame_tracks.keys():
     #     bbox = frame_tracks[id]
@@ -163,7 +164,8 @@ def visualize_tracks_opencv(image, frame_tracks, colors, display=False, export_f
 
 
     if display:
-        cv2.imshow(image)
+        image = cv2.resize(image, (0, 0), fx=0.3, fy=0.3)
+        cv2.imshow('image', image)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 

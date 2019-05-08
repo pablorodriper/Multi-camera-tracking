@@ -18,8 +18,8 @@ import motmetrics as mm
 if __name__ == '__main__':
 
     display_frames = False
-    export_frames = False
-    load_pkl = True
+    export_frames = True
+    load_pkl = False
 
     root_path = os.path.abspath('')
     dataset_path = os.path.join(root_path, 'datasets', 'aic19-track1-mtmc-train')
@@ -90,7 +90,6 @@ if __name__ == '__main__':
                     print("Embeddings loaded\n")
 
             else:
-
                 detections_list = filtering_nms(detections_list, video_path[cam_num])
                 detections_list = filtering_parked(detections_list, video_path[cam_num])
 
@@ -101,8 +100,11 @@ if __name__ == '__main__':
             # Compute mAP
             compute_mAP(groundtruth_list[cam_num], tracked_detections[cam_num])
 
+
+
         #correspondences = bboxes_correspondences(groundtruth_list, timestamps, framenum, fps)
-        #multicamera_tracks = match_tracks(tracked_detections, tracks_by_camera, homography_cameras, timestamps, framenum, fps, video_path, path_experiment, embeddings)        #match_tracks_by_frame(tracked_detections, homography_cameras, timestamps, framenum, fps, cameras_path[0] + video_challenge_path, cameras_path[1] + video_challenge_path, correspondences)
+        #multicamera_tracks = match_tracks(tracked_detections, tracks_by_camera, homography_cameras, timestamps, framenum, fps, video_path, path_experiment, embeddings)
+        #match_tracks_by_frame(tracked_detections, homography_cameras, timestamps, framenum, fps, cameras_path[0] + video_challenge_path, cameras_path[1] + video_challenge_path, correspondences)
 
 
         with open('output/pickle/multitracksresultsS04_2.pkl', 'rb') as p:

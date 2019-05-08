@@ -5,8 +5,9 @@ from utils.detection import Detection
 PIXELS_SHIFT = 8
 WINDOW_FRAME = 15
 def filtering_parked(detections, video_path):
-    # for detection in detections:
-    #     print(detection)
+
+    print("Removing parked cars")
+
     capture = cv2.VideoCapture(video_path)
     n_frame = 0
     final_det = list()
@@ -56,6 +57,8 @@ def filtering_parked(detections, video_path):
 
 
 def filtering_nms(detections, video_path):
+
+    print("Applying non-maximum-supression")
     capture = cv2.VideoCapture(video_path)
     n_frame = 0
     final_det = list()
