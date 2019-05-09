@@ -15,7 +15,7 @@ from object_tracking.optical_flow_tracking import TrackingOF
 from siamese.one_tower import One_tower
 
 
-def compute_embedding(detec, image, one_tower, image_size=64, path_experiment = '../../siamese/experiments/Wed_Apr_10_08_49_36_2019'):
+def compute_embedding(detec, image, one_tower, image_size=64, path_experiment = '../m5/facu/MCV_CNN_framework/siamese/experiments/Wed_Apr_10_08_49_36_2019'):
     minc, minr, maxc, maxr = detec.bbox
     image_car = image[minr:maxr, minc:maxc, :]
     image_car_resized = cv2.resize(image_car, (image_size, image_size))
@@ -24,7 +24,7 @@ def compute_embedding(detec, image, one_tower, image_size=64, path_experiment = 
     return embed
 
 
-def compute_embeddings(detections_to_embed, one_tower, image_size=64, path_experiment = '../../siamese/experiments/Wed_Apr_10_08_49_36_2019'):
+def compute_embeddings(detections_to_embed, one_tower, image_size=64, path_experiment = '../m5/facu/MCV_CNN_framework/siamese/experiments/Wed_Apr_10_08_49_36_2019'):
     embeds =  one_tower.inference_detections(detections_to_embed, path_experiment)
     return embeds
 
@@ -50,7 +50,7 @@ def compute_embeddings_for_tracked_detections(tracked_detections, video_path, na
         n_frame += 1
 
     embeddings = compute_embeddings(detects_to_embed, one_tower)
-    with open('embeddings' + name_pkl + '.pkl', 'wb') as f:
+    with open('output/pickle/embeddings_gt' + name_pkl + '.pkl', 'wb') as f:
         pickle.dump(embeddings, f, protocol=2)
 
 

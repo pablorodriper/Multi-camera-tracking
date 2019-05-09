@@ -19,6 +19,7 @@ from utils.plotting import visualize_tracks, visualize_tracks_opencv
 from evaluation.bbox_iou import bbox_iou, bbox_intersection, intersection_over_area, bbox_area
 from utils.reading import read_homography_matrix, read_annotations_file
 from utils.detection import Detection
+from utils.track import Track
 from siamese.one_tower import One_tower
 
 
@@ -114,6 +115,49 @@ def predict_bbox(train_data, train_labels):
     plt.plot(history.history['val_loss'])
     plt.savefig('loss_valloss_2.jpg')
     plt.close()
+
+
+def rgb_histogram(image):
+    h, w, c = image.shape
+
+    descriptors = []
+    for i in range(c):
+        hist = np.histogram(image[:, :, i], bins=10, range=(0, 255))[0]
+        hist = hist / (h * w)  # normalize
+        descriptors.append(np.array(hist, dtype=np.float32))
+
+    return descriptors
+
+
+def compute_histogram_gt(gt_detections, video_path):
+    capture = cv2.VideoCapture(video_path)
+    n_frame = 0
+    tracks_gt_with_hist = []
+
+    while capture.isOpened():
+        valid, image = capture.read()
+        if not valid:
+            break
+
+        detections_on_frame = [x for x in gt_detections if x.frame == n_frame]
+
+        for detection in detections_on_frame:
+            track_corresponding = [t for t in tracks_gt_with_hist if t.id == detection.track_id]
+            if len(track_corresponding) > 0:
+                track_corresponding[0].detections.append(
+                    Detection(detection.frame, detection.label, detection.xtl, detection.ytl, detection.width,
+                              detection.height, detection.confidence, track_id=detection.track_id,
+                              histogram=rgb_histogram(image[detection.ytl:(detection.ytl + detection.height), detection.xtl:(detection.xtl+detection.width)])))
+            else:
+                track_corresponding = Track(detection.track_id,
+                                            [Detection(detection.frame, detection.label, detection.xtl, detection.ytl, detection.width,
+                              detection.height, detection.confidence, track_id=detection.track_id,
+                              histogram=rgb_histogram(image[detection.ytl:(detection.ytl + detection.height), detection.xtl:(detection.xtl+detection.width)]))])
+                tracks_gt_with_hist.append(track_corresponding)
+
+        n_frame += 1
+
+    return tracks_gt_with_hist
 
 
 def intersection(u, v):
@@ -285,7 +329,11 @@ def visualize_matches(matched_tracks, cameras_tracks_0, cameras_tracks_1, video_
 
 
 def distances_to_tracks(track1, tracks_camera2, homographies, camera1, camera2):
-    match_tracks_metrics = np.ones(len(tracks_camera2))*(-1)
+    match_tracks_metrics = {}
+    for track_i in tracks_camera2:
+        match_tracks_metrics[track_i.id] = -1
+    print(match_tracks_metrics)
+    #match_tracks_metrics = np.ones(len(tracks_camera2))*(-1)
     transformed_track1 = []
     for detec in track1.detections:
         transformed_detec = transform_detection(detec, homographies[camera1], homographies[camera2])
@@ -304,43 +352,87 @@ def distances_to_tracks(track1, tracks_camera2, homographies, camera1, camera2):
         tracks_intersection = 0
         area_projected_bboxes = 0
         num_matches = 0
+        id1_assignations = {}
+        id2_assignations = {}
         for match in sorted_bbox_comparisons:
             if match[2] > 0:
                 if best_match == None:
                     best_match = match
-                    last_id1 = match[0]
-                    last_id2 = match[1]
-                    first_id1 = match[0]
-                    first_id2 = match[1]
                     num_matches += 1
                     tracks_intersection += match[3]
                     area_projected_bboxes += match[4]
+                    id1_assignations[match[0]] = match[1]
+                    id2_assignations[match[1]] = match[0]
 
                 else:
-                    id1 = match[0]
-                    id2 = match[1]
-                    if id1 > last_id1 and id2 > last_id2:
-                        last_id1 = id1
-                        last_id2 = id2
-                        num_matches += 1
-                        tracks_intersection += match[3]
-                        area_projected_bboxes += match[4]
-                    elif id1 < first_id1 and id2 < first_id2:
-                        first_id1 = id1
-                        first_id2 = id2
-                        num_matches += 1
-                        tracks_intersection += match[3]
-                        area_projected_bboxes += match[4]
+                    if match[0] not in id1_assignations.keys() and match[1] not in id2_assignations.keys():
+                        max_id1_before_candidates = [id1 for id1 in id1_assignations.keys() if id1 < match[0]]
+                        min_id1_after_candidates = [id1 for id1 in id1_assignations.keys() if id1 > match[0]]
+                        if len(max_id1_before_candidates)>0:
+                            max_id1_before = max(max_id1_before_candidates)
+                            if match[1] > id1_assignations[max_id1_before]:
+                                if len(min_id1_after_candidates) > 0:
+                                    min_id1_after = min(min_id1_after_candidates)
+                                    if match[1] < id1_assignations[min_id1_after]:
+                                        num_matches += 1
+                                        tracks_intersection += match[3]
+                                        area_projected_bboxes += match[4]
+                                        id1_assignations[match[0]] = match[1]
+                                        id2_assignations[match[1]] = match[0]
+
+                                else:
+                                    num_matches += 1
+                                    tracks_intersection += match[3]
+                                    area_projected_bboxes += match[4]
+                                    id1_assignations[match[0]] = match[1]
+                                    id2_assignations[match[1]] = match[0]
+                        else:
+                            if len(min_id1_after_candidates) > 0:
+                                min_id1_after = min(min_id1_after_candidates)
+                                if match[1] < id1_assignations[min_id1_after]:
+                                    num_matches += 1
+                                    tracks_intersection += match[3]
+                                    area_projected_bboxes += match[4]
+                                    id1_assignations[match[0]] = match[1]
+                                    id2_assignations[match[1]] = match[0]
+
+                #
+                # if best_match == None:
+                #     best_match = match
+                #     last_id1 = match[0]
+                #     last_id2 = match[1]
+                #     first_id1 = match[0]
+                #     first_id2 = match[1]
+                #     num_matches += 1
+                #     tracks_intersection += match[3]
+                #     area_projected_bboxes += match[4]
+                #
+                # else:
+                #     id1 = match[0]
+                #     id2 = match[1]
+                #     if id1 > last_id1 and id2 > last_id2:
+                #         last_id1 = id1
+                #         last_id2 = id2
+                #         num_matches += 1
+                #         tracks_intersection += match[3]
+                #         area_projected_bboxes += match[4]
+                #     elif id1 < first_id1 and id2 < first_id2:
+                #         first_id1 = id1
+                #         first_id2 = id2
+                #         num_matches += 1
+                #         tracks_intersection += match[3]
+                #         area_projected_bboxes += match[4]
         if total_area_projected_bboxes > 0:
             match_tracks_metrics[track2.id] = tracks_intersection / total_area_projected_bboxes
 
     return match_tracks_metrics
 
 
-def get_candidates_by_trajectory_in_camera2(match_tracks_metrics, intersection_threshold = 0.3):
+def get_candidates_by_trajectory_in_camera2(match_tracks_metrics, intersection_threshold = 0.2):
     candidates_by_trajectory = []
-    for track2id, dist in enumerate(match_tracks_metrics):
-        if dist > intersection_threshold or dist == -1:
+    for track2id in match_tracks_metrics:
+        dist = match_tracks_metrics[track2id]
+        if dist >= intersection_threshold or dist == -1:
             #print(dist)
             candidates_by_trajectory.append(track2id)
 
@@ -353,18 +445,79 @@ def interval_times_intersect(start_time, end_time, t1, t2):
     return True
 
 
-def filter_by_time_coherence(candidates_by_trajectory, track1, tracks_camera2, camera1, camera2, timestamps, fps, framenum, time_margin = 150):
-    sorted_detections_track1 = sorted(track1.detections, key=lambda x: x.frame, reverse=True)
-    start_time = sorted_detections_track1[0].frame - int(timestamps[camera1]*fps) - time_margin
-    end_time = sorted_detections_track1[-1].frame - int(timestamps[camera1]*fps) + time_margin
+def filter_by_time_coherence(candidates_by_trajectory, match_tracks_metrics, track1, tracks_camera2, camera1, camera2, timestamps, fps, framenum, time_margin = 0):
+    time_margin_effective = max(time_margin, int(framenum[camera1]*0.05))
+    #print('Time margin: {}'.format(time_margin_effective))
+    sorted_detections_track1 = sorted(track1.detections, key=lambda x: x.frame, reverse=False)
+    #print('Trajectory 1 detection frames: {}'.format([t.frame for t in sorted_detections_track1]))
+    start_time = sorted_detections_track1[0].frame - int(timestamps[camera1]*fps) - time_margin_effective
+    end_time = sorted_detections_track1[-1].frame - int(timestamps[camera1]*fps) + time_margin_effective
+    #print('Start time: {0}          End time: {1}'.format(start_time, end_time))
     final_candidates = []
     for track2 in tracks_camera2:
         if track2.id in candidates_by_trajectory:
-            sorted_detections_track2 = sorted(track2.detections, key=lambda x: x.frame, reverse=True)
-            t1 = sorted_detections_track2[0].frame - int(timestamps[camera2]*fps)
-            t2 = sorted_detections_track2[-1].frame - int(timestamps[camera2]*fps)
-            if interval_times_intersect(start_time, end_time, t1, t2):
+            if match_tracks_metrics[track2.id] == -1:
                 final_candidates.append(track2.id)
+            else:
+                sorted_detections_track2 = sorted(track2.detections, key=lambda x: x.frame, reverse=False)
+                #print('Trajectory 2 detection frames: {}'.format([t.frame for t in sorted_detections_track2]))
+                t1 = sorted_detections_track2[0].frame - int(timestamps[camera2]*fps)
+                t2 = sorted_detections_track2[-1].frame - int(timestamps[camera2]*fps)
+                #print('Start time trajectory 2: {0}          End time trajectory 2: {1}'.format(t1, t2))
+                if interval_times_intersect(start_time, end_time, t1, t2):
+                    final_candidates.append(track2.id)
+                    #print('Intersect in time!')
+    return final_candidates
+
+
+def filter_by_color(candidates, track1, tracks_camera2):
+    ref_hist = [[], [], []]
+    final_candidates = []
+    ref_detecs_num = 0
+    for detection1 in track1.detections:
+        ref_detecs_num += 1
+        for c in range(3):
+            if ref_hist[c] == []:
+                ref_hist[c] = detection1.histogram[c]
+            else:
+                ref_hist[c] = np.sum([ref_hist[c], detection1.histogram[c]], axis=0)
+            #ref_hist .append(detection1.histogram)
+            #ref_detecs_num += 1
+    for c in range(3):
+        #print(ref_hist[c])
+        ref_hist[c] = ref_hist[c]/ref_detecs_num
+
+    for track2 in tracks_camera2:
+        if track2.id in candidates:
+            track_hist = [[], [], []]
+            track_detecs_num = 0
+            for detection2 in track2.detections:
+                track_detecs_num += 1
+                for c in range(3):
+                    if track_hist[c] == []:
+                        track_hist[c] = detection2.histogram[c]
+                    else:
+                        track_hist[c] = np.sum([track_hist[c], detection2.histogram[c]], axis=0)
+
+
+                #track_hist.append(detection2.histogram)
+                #track_detecs_num += 1
+            for c in range(3):
+                #print(track_hist[c])
+                track_hist[c] = track_hist[c]/track_detecs_num
+            #track_hist = sum(track_hist) / track_detecs_num
+            print('Track histogram: {}'.format(track_hist))
+
+            intersec = 0
+            for c in range(3):
+                intersec += intersection(ref_hist[c], track_hist[c])
+            intersec = intersec/3
+            print('Histogram intersection: {}'.format(intersec))
+            if track2.id == track1.id:
+                print('GOOD Histogram intersection: {}'.format(intersec))
+            if intersec > 0.05:
+                final_candidates.append(track2.id)
+
     return final_candidates
 
 
@@ -375,16 +528,18 @@ def compute_track_embedding(detections, camera, video_path, path_experiment, one
     num_detections = 0
     embed_cam = embeddings[camera]
     for detec in detections:
-        #print('Detection to embed: {}'.format(detec))
+        print('Detection to embed: {}'.format(detec))
         for emb_det in embed_cam:
+            print( emb_det['detection'].frame)
+            print(detec.frame)
             if emb_det['detection'].frame == detec.frame:
                 embed = emb_det['embedding']
                 embed = embed[0]
-
-        #print('embedding: {}'.format(embed))
-        sum_embeds += embed
-        num_detections += 1
-
+                print('embedding: {}'.format(embed))
+                sum_embeds += embed
+                print('Sum embeds: {}'.format(sum_embeds))
+                num_detections += 1
+    print('Track embedding: {}'.format(sum_embeds/num_detections))
     return sum_embeds/num_detections
 
 
@@ -405,14 +560,18 @@ def get_candidates_embeddings(reference_track, reference_camera, candidates_matc
     return candidate_tracks_embeddings, candidate_tracks_ids
 
 
-def compute_distances_to_candidates(candidate_tracks_embeddings):
+def compute_distances_to_candidates(candidate_tracks_embeddings, candidate_tracks_ids):
     ref_track = candidate_tracks_embeddings[0]
+    ref_track_id = candidate_tracks_ids[0][1]
     print('Distances:')
     dist = 0
     num = 0
     for track_emb in candidate_tracks_embeddings[1:]:
         dist += distance.euclidean(ref_track, track_emb)
-        print(distance.euclidean(ref_track, track_emb))
+        print('Distance tracks: {}'.format(distance.euclidean(ref_track, track_emb)))
+        track_id = candidate_tracks_ids[num+1][1]
+        #if track_id == ref_track_id:
+        #    print('GOOD distance tracks: {}'.format(distance.euclidean(ref_track, track_emb)))
         num += 1
     if num > 0:
         print('Mean distance: {}'.format(dist/num))
@@ -441,17 +600,46 @@ def assign_track(candidates_embeddings, candidate_tracks_ids, already_matched_tr
     return already_matched_tracks, None
 
 
+def assign_correct_candidates_track(reference_track, reference_camera, candidate_matches, already_matched_tracks):
+    candidate_tracks_ids = []
+    multitracks_id = defaultdict(list)
+
+    if reference_track.id not in already_matched_tracks[reference_camera]:
+        already_matched_tracks[reference_camera].append(reference_track.id)
+        multitracks_id[reference_camera].append(reference_track.id)
+        general_track_id = reference_track.id
+    else:
+        return -1, already_matched_tracks, None
+
+    for camera in candidate_matches:
+        for trackid in candidate_matches[camera]:
+            if trackid == reference_track.id:
+                print('match!')
+                candidate_tracks_ids.append((camera, trackid))
+                if trackid not in already_matched_tracks[camera]:
+                    already_matched_tracks[camera].append(trackid)
+                    multitracks_id[camera].append(trackid)
+
+    return general_track_id, already_matched_tracks, multitracks_id
+
+
+
 def match_tracks(tracked_detections, cameras_tracks, homographies, timestamps, framenum, fps, video_path, path_experiment, embeddings_by_camera):
     general_track_id = 1
+    number_candidates = []
     multitrack_assignations = {}
     one_tower = One_tower(64, 64)
     embeddings = defaultdict(list)
     already_matched_tracks = defaultdict(list)
+    general_track_id_used = []
     for camera1 in cameras_tracks:
-        print(camera1)
         tracks_camera1 = cameras_tracks[camera1]
         for track1 in tracks_camera1:
             if track1.id not in already_matched_tracks[camera1]:
+                print('Reference track')
+                print(track1.id)
+                print('Reference camera')
+                print(camera1)
                 candidate_matches = {}
                 for camera2 in cameras_tracks:
                     if camera2 != camera1:
@@ -461,22 +649,42 @@ def match_tracks(tracked_detections, cameras_tracks, homographies, timestamps, f
                         print('Trajectory distances')
                         print(match_tracks_metrics)
                         candidates_by_trajectory = get_candidates_by_trajectory_in_camera2(match_tracks_metrics)
-                        #print(candidates_by_trajectory)
-                        candidates_by_time_and_trajectory = filter_by_time_coherence(candidates_by_trajectory, track1, tracks_camera2, camera1, camera2, timestamps, fps, framenum)
+                        # effective_candidates_by_trajectory_number = len([cand for cand in candidates_by_trajectory if match_tracks_metrics[cand] != -1])
+                        # if effective_candidates_by_trajectory_number>0:
+                        #     number_candidates.append(effective_candidates_by_trajectory_number)
+                        print('Candidates by trajectory')
+                        print(candidates_by_trajectory)
+                        #candidate_matches[camera2] = candidates_by_trajectory
+                        candidates_by_time_and_trajectory = filter_by_time_coherence(candidates_by_trajectory, match_tracks_metrics, track1, tracks_camera2, camera1, camera2, timestamps, fps, framenum)
                         print('Candidates in camera: {}'.format(candidates_by_time_and_trajectory))
+                        #candidates_by_histogram_time_trajectory = filter_by_color(candidates_by_time_and_trajectory, track1, tracks_camera2)
+
+
                         candidate_matches[camera2] = candidates_by_time_and_trajectory
+                        effective_candidates_by_trajectory_number = len(
+                            [cand for cand in candidates_by_time_and_trajectory if match_tracks_metrics[cand] != -1])
+                        if effective_candidates_by_trajectory_number > 0:
+                            number_candidates.append(effective_candidates_by_trajectory_number)
                 print('Candidate_matches: {}'.format(candidate_matches))
                 candidates_embeddings, candidates_tracksids = get_candidates_embeddings(track1, camera1, candidate_matches, cameras_tracks, video_path, path_experiment, one_tower, embeddings_by_camera)
-                compute_distances_to_candidates(candidates_embeddings)
-                already_matched_tracks, multitrack = assign_track(candidates_embeddings, candidates_tracksids, already_matched_tracks)
-                if multitrack != None:
+                compute_distances_to_candidates(candidates_embeddings, candidates_tracksids)
+                if len(number_candidates) > 0:
+                    mean_number_candidates = sum(number_candidates)/len(number_candidates)
+                else:
+                    mean_number_candidates = 0
+                print('Mean number of candidates: {0} for {1} trajectories'.format(mean_number_candidates, len(number_candidates)))
+                #general_track_id, already_matched_tracks, multitrack = assign_correct_candidates_track(track1, camera1, candidate_matches, already_matched_tracks)
+                already_matched_tracks, multitrack = assign_track(candidates_embeddings, candidates_tracksids,
+                                                                  already_matched_tracks)
+                if multitrack != None and (general_track_id) not in general_track_id_used:
                     multitrack_assignations[general_track_id] = multitrack
+                    general_track_id_used.append(general_track_id)
                     general_track_id += 1
 
                 print(candidate_matches)
 
         #visualize_matches(candidate_matches, tracked_detections[0], tracked_detections[1], video_path_0, video_path_1)
-    with open('output/pickle/multitracksresultsS04_2.pkl', 'wb') as f:
+    with open('output/pickle/multitracksresultsS03_siamese_topk.pkl', 'wb') as f:
         pickle.dump(multitrack_assignations, f, protocol=2)
     print(multitrack_assignations)
 

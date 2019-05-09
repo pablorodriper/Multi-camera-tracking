@@ -100,6 +100,7 @@ def read_annotations_from_txt(gt_path, analyze=False):
     :returns: list of Detection
     """
     ground_truths_list = list()
+    tracks = []
     if analyze:
         max_w = 0
         min_w = 2000
@@ -113,7 +114,14 @@ def read_annotations_from_txt(gt_path, analyze=False):
             #if int(data[0])-1 < 534:
             #    continue
             ground_truths_list.append(Detection(int(data[0])-1, 'car', int(float(data[2])), int(float(data[3])), int(float(data[4])), int(float(data[5])),float(data[6]), track_id=int(data[1])))
-
+            track_corresponding = [t for t in tracks if t.id == int(data[1])]
+            if len(track_corresponding) > 0:
+                track_corresponding[0].detections.append(
+                    Detection(int(data[0])-1, 'car', int(float(data[2])), int(float(data[3])), int(float(data[4])), int(float(data[5])),float(data[6]), track_id=int(data[1])))
+            else:
+                track_corresponding = Track(int(data[1]),
+                                            [Detection(int(data[0])-1, 'car', int(float(data[2])), int(float(data[3])), int(float(data[4])), int(float(data[5])),float(data[6]), track_id=int(data[1]))])
+                tracks.append(track_corresponding)
             if analyze:
                 if int(data[4]) < min_w: min_w = int(data[4])
                 if int(data[4]) > max_w: max_w = int(data[4])
@@ -125,13 +133,13 @@ def read_annotations_from_txt(gt_path, analyze=False):
     # print('height: [{0}, {1}]'.format(min_h, max_h))
     # print('ratio: [{0}, {1}]'.format(min_ratio, max_ratio))
 
-    return ground_truths_list
+    return ground_truths_list, tracks
 
 
 def read_annotations_file(gt_path, video_path):
     tracks_gt_list = []
     if (gt_path.endswith('.txt')):
-        annotations_list = read_annotations_from_txt(gt_path)
+        annotations_list, tracks_gt_list = read_annotations_from_txt(gt_path)
     elif (gt_path.endswith('.xml')):
         annotations_list, tracks_gt_list = read_annotations_from_xml(gt_path, video_path)
     else:
