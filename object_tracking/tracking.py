@@ -107,6 +107,7 @@ def color_check(image, bbox_1, bbox_2):
     u = rgb_histogram(image_1)
     v = rgb_histogram(image_2)
 
+    #print(intersection(u, v))
     if intersection(u, v) < 0.5:
         return True
     return False
@@ -115,7 +116,8 @@ def color_check(image, bbox_1, bbox_2):
 def ratio_check(bbox_1, bbox_2):
     box_h_1, box_w_1 = bbox_1[2] - bbox_1[0], bbox_1[3] - bbox_1[1]
     box_h_2, box_w_2 = bbox_2[2] - bbox_2[0], bbox_2[3] - bbox_2[1]
-    if (box_h_1/box_w_1) > 1.2*(box_h_2/box_w_2) or (box_h_1/box_w_1) < 0.8*(box_h_2/box_w_2):
+    #print(str(box_h_1/box_w_1) + " " + str(1.35*(box_h_2/box_w_2)) + " " + str(0.65*(box_h_2/box_w_2)))
+    if (box_h_1/box_w_1) > 1.35*(box_h_2/box_w_2) or (box_h_1/box_w_1) < 0.65*(box_h_2/box_w_2):
         return False
     return True
 
@@ -136,15 +138,26 @@ def predict_position(image, track):
     xtl_new = 0
     ytl_new = 0
     time = track.time_since_update + 1
+    width_list = []
+    height_list = []
+
+
     for n, detection in enumerate(track.detections):
         width += detection.bbox[2] - detection.bbox[0]
         height += detection.bbox[3] - detection.bbox[1]
+        width_list.append(detection.bbox[2] - detection.bbox[0])
+        height_list.append(detection.bbox[3] - detection.bbox[1])
         if n>0:
             xtl_new += detection.bbox[0] - track.detections[n - 1].bbox[0]
             ytl_new += detection.bbox[1] - track.detections[n - 1].bbox[1]
 
-    width = width/len(track.detections)
-    height = height/len(track.detections)
+    if n > 3:
+        width = (width_list[-1] + width_list[-2] + width_list[-3])/3
+        height = (height_list[-1] + height_list[-2] + height_list[-3])/3
+    else:
+        width = width/len(track.detections)
+        height = height/len(track.detections)
+
     xtl_new = track.detections[-1].bbox[0] + time*xtl_new/len(track.detections)
     ytl_new = track.detections[-1].bbox[1] + time*ytl_new / len(track.detections)
 
@@ -210,11 +223,31 @@ def match_next_bbox(image, last_bbox, unused_detections):
         return None
 
 
+def bbox_touching_border(image, bbox):
+    """
+    Check if the bounding box is touching any edge of the image
+    """
+    #print(bbox)
+    minc, minr, maxc, maxr = bbox
+    if minc < 30 or minr < 30:
+        #print("limite inferior")
+        return True
+
+    h, w, c = image.shape
+    if maxr > h-30 or maxc > w-30:
+        #print("limite superiro")
+        return True
+
+    return False
+
 def get_IoU_relation(image, track, last_bbox, unused_detections, IoU_relation):
     for detection in unused_detections:
         IoU = bbox_iou(last_bbox, detection.bbox)
-        if IoU > 0 and color_check(image, last_bbox, detection.bbox) and ratio_check(last_bbox, detection.bbox):
-            IoU_relation.append((track, detection, IoU))
+        #print("IoU: " + str(IoU))
+        if IoU > 0.1 and color_check(image, last_bbox, detection.bbox):
+            if IoU > 0.5 or bbox_touching_border(image, last_bbox) or bbox_touching_border(image, detection.bbox) or ratio_check(last_bbox, detection.bbox):
+                IoU_relation.append((track, detection, IoU))
+                #print("ID append: " + str(track.id))
     return IoU_relation
 
 
@@ -246,12 +279,12 @@ def track_objects(video_path, detections_list, gt_list, optical_flow = False, of
         tracks, unused_detections, frame_tracks = update_tracks(image, tracks, detections_on_frame, frame_tracks)
         tracks, max_track, frame_tracks = obtain_new_tracks(tracks, unused_detections, max_track, frame_tracks)
 
-        if display and n_frame%2==0 and n_frame < 200:
-            visualize_tracks(image, frame_tracks, colors, display=display)
+        if display: # and n_frame > 336: #and n_frame%2==0
+            visualize_tracks_opencv(image, frame_tracks, colors, display=display)
 
         if export_frames:
             visualize_tracks_opencv(image, frame_tracks, colors, export_frames=export_frames,
-                             export_path="output_frames/tracking/frame_{:04d}.png".format(n_frame))
+                             export_path="output/single_camera_frames/{}_{}_frame_{:04d}.png".format(video_path[-16:-13],video_path[-12:-8], n_frame))
 
         # IDF1 computing
         detec_bboxes = []

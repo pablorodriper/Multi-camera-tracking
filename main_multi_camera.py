@@ -6,7 +6,7 @@ import pickle
 # Tracking
 from evaluation.evaluation_funcs import compute_mAP
 from object_tracking.tracking import track_objects, compute_embeddings_for_tracked_detections
-from object_tracking.multi_camera import match_tracks_by_frame, create_dataset, predict_bbox, bboxes_correspondences, match_tracks, convert_results_to_txt, compute_histogram_gt
+from object_tracking.multi_camera import match_tracks_by_frame, create_dataset, predict_bbox, bboxes_correspondences, match_tracks
 #from utils.plotting import draw_video_bboxes
 from utils.reading import read_annotations_file, read_homography_matrix, get_framenum, get_timestamp
 from utils.filter import filtering_parked,filtering_nms
@@ -18,8 +18,8 @@ from utils.detection import Detection
 if __name__ == '__main__':
 
     display_frames = False
-    export_frames = False
-    load_pkl = True
+    export_frames = True
+    load_pkl = False
 
     root_path = os.path.abspath('')
     dataset_path = os.path.join(root_path, 'datasets', 'aic19-track1-mtmc-train')
@@ -97,17 +97,16 @@ if __name__ == '__main__':
                     tracks_by_camera[cam_num] = pickle.load(p)
                     print("Tracks loaded\n")
 
-                with open('output/pickle/embeddings_gt' + str(sequence) + str(cam_num)+'.pkl', 'rb') as p:
+                with open('output/pickle/embeddings' + str(sequence) + str(cam_num)+'.pkl', 'rb') as p:
                     print("Reading tracks from pkl")
                     embeddings[cam_num] = pickle.load(p)
                     print("Embeddings loaded\n")
 
             else:
-
                 detections_list = filtering_nms(detections_list, video_path[cam_num])
                 detections_list = filtering_parked(detections_list, video_path[cam_num])
 
-                tracked_detections[cam_num], tracks_by_camera[cam_num], embeddings[cam_num] = track_objects(camera + video_challenge_path,  groundtruth_list[cam_num], groundtruth_list[cam_num],
+                tracked_detections[cam_num], tracks_by_camera[cam_num], embeddings[cam_num] = track_objects(camera + video_challenge_path, detections_list, groundtruth_list[cam_num],
                                                 display=display_frames, export_frames=export_frames, idf1=False, name_pkl=str(sequence) + str(cam_num))
                 embeddings[cam_num] = compute_embeddings_for_tracked_detections(tracked_detections[cam_num], video_path[cam_num], name_pkl=str(sequence) + str(cam_num))
 
@@ -121,6 +120,8 @@ if __name__ == '__main__':
             #     embeddings[cam_num] = compute_embeddings_for_tracked_detections(groundtruth_list[cam_num], video_path[cam_num], name_pkl=str(sequence) + str(cam_num))
             # Compute mAP
             compute_mAP(groundtruth_list[cam_num], tracked_detections[cam_num])
+
+
 
         #correspondences = bboxes_correspondences(groundtruth_list, timestamps, framenum, fps)
         #tracked_detections = groundtruth_list
